@@ -1,11 +1,18 @@
-import { useCallback, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from "expo-router";
+import { useCallback, useMemo, useState } from "react";
+import {
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import { EmptyState } from '@/components/EmptyState';
-import { Field } from '@/components/Field';
-import { SectionCard } from '@/components/SectionCard';
+import { EmptyState } from "@/components/EmptyState";
+import { Field } from "@/components/Field";
+import { SectionCard } from "@/components/SectionCard";
 import {
   createDatabaseBackup,
   DatabaseBackupFile,
@@ -13,11 +20,8 @@ import {
   listDatabaseBackups,
   listTransactionsByRange,
   restoreDatabaseBackup,
-} from '@/lib/db';
-import {
-  formatRupiah,
-  toISODate,
-} from '@/lib/format';
+} from "@/lib/db";
+import { formatRupiah, toISODate } from "@/lib/format";
 
 const getDefaultDateRange = () => {
   const now = new Date();
@@ -57,8 +61,8 @@ const formatDisplayDate = (value: string) => {
     return value;
   }
 
-  const day = `${date.getDate()}`.padStart(2, '0');
-  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, "0");
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
   return `${day}/${month}/${date.getFullYear()}`;
 };
 
@@ -70,7 +74,7 @@ export default function ReportsScreen() {
     Awaited<ReturnType<typeof listTransactionsByRange>>
   >([]);
   const [backupFiles, setBackupFiles] = useState<DatabaseBackupFile[]>([]);
-  const [backupPath, setBackupPath] = useState('');
+  const [backupPath, setBackupPath] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
 
   const getValidatedRange = useCallback(() => {
@@ -78,12 +82,15 @@ export default function ReportsScreen() {
     const end = parseISODate(endDate);
 
     if (!start || !end) {
-      Alert.alert('Format tanggal salah', 'Gunakan format tanggal YYYY-MM-DD.');
+      Alert.alert("Format tanggal salah", "Gunakan format tanggal YYYY-MM-DD.");
       return null;
     }
 
     if (start > end) {
-      Alert.alert('Periode tidak valid', 'Tanggal mulai tidak boleh melewati tanggal akhir.');
+      Alert.alert(
+        "Periode tidak valid",
+        "Tanggal mulai tidak boleh melewati tanggal akhir.",
+      );
       return null;
     }
 
@@ -112,9 +119,9 @@ export default function ReportsScreen() {
     try {
       const rows = await listDatabaseBackups();
       setBackupFiles(rows);
-      setBackupPath((current) => current || rows[0]?.uri || '');
+      setBackupPath((current) => current || rows[0]?.uri || "");
     } catch (error) {
-      console.error('Error loading backups:', error);
+      console.error("Error loading backups:", error);
     }
   }, []);
 
@@ -122,20 +129,20 @@ export default function ReportsScreen() {
     useCallback(() => {
       loadData();
       loadBackups();
-    }, [loadBackups, loadData])
+    }, [loadBackups, loadData]),
   );
 
   const totals = useMemo(() => {
     return transactions.reduce(
       (acc, item) => {
-        if (item.type === 'income') {
+        if (item.type === "income") {
           acc.income += item.amount;
         } else {
           acc.expense += item.amount;
         }
         return acc;
       },
-      { income: 0, expense: 0 }
+      { income: 0, expense: 0 },
     );
   }, [transactions]);
 
@@ -151,19 +158,32 @@ export default function ReportsScreen() {
 
     try {
       setIsProcessing(true);
-      const rows = await listTransactionsByRange(range.start, range.exclusiveEnd);
+      const rows = await listTransactionsByRange(
+        range.start,
+        range.exclusiveEnd,
+      );
       setTransactions(rows);
 
       if (rows.length === 0) {
-        Alert.alert('Tidak ada data', 'Tidak ada transaksi pada periode ini untuk diexport.');
+        Alert.alert(
+          "Tidak ada data",
+          "Tidak ada transaksi pada periode ini untuk diexport.",
+        );
         return;
       }
 
-      const file = await exportTransactionsToExcel(rows, range.start, range.end);
-      Alert.alert('Export berhasil', `File Excel tersimpan:\n${file.uri}`);
+      const file = await exportTransactionsToExcel(
+        rows,
+        range.start,
+        range.end,
+      );
+      Alert.alert("Export berhasil", `File Excel tersimpan:\n${file.uri}`);
     } catch (error) {
-      console.error('Error exporting report:', error);
-      Alert.alert('Export gagal', 'Gagal membuat file Excel. Silakan coba lagi.');
+      console.error("Error exporting report:", error);
+      Alert.alert(
+        "Export gagal",
+        "Gagal membuat file Excel. Silakan coba lagi.",
+      );
     } finally {
       setIsProcessing(false);
     }
@@ -175,10 +195,13 @@ export default function ReportsScreen() {
       const file = await createDatabaseBackup();
       await loadBackups();
       setBackupPath(file.uri);
-      Alert.alert('Backup berhasil', `File backup tersimpan:\n${file.uri}`);
+      Alert.alert("Backup berhasil", `File backup tersimpan:\n${file.uri}`);
     } catch (error) {
-      console.error('Error creating backup:', error);
-      Alert.alert('Backup gagal', 'Gagal membuat backup database. Silakan coba lagi.');
+      console.error("Error creating backup:", error);
+      Alert.alert(
+        "Backup gagal",
+        "Gagal membuat backup database. Silakan coba lagi.",
+      );
     } finally {
       setIsProcessing(false);
     }
@@ -186,39 +209,48 @@ export default function ReportsScreen() {
 
   const handleRestoreBackup = (uri = backupPath.trim()) => {
     if (!uri) {
-      Alert.alert('Pilih file backup', 'Isi path file backup atau pilih backup yang tersedia.');
+      Alert.alert(
+        "Pilih file backup",
+        "Isi path file backup atau pilih backup yang tersedia.",
+      );
       return;
     }
 
     Alert.alert(
-      'Restore Database',
-      'Data saat ini akan diganti dengan isi file backup. Lanjutkan?',
+      "Restore Database",
+      "Data saat ini akan diganti dengan isi file backup. Lanjutkan?",
       [
-        { text: 'Batal', style: 'cancel' },
+        { text: "Batal", style: "cancel" },
         {
-          text: 'Restore',
-          style: 'destructive',
+          text: "Restore",
+          style: "destructive",
           onPress: async () => {
             try {
               setIsProcessing(true);
               await restoreDatabaseBackup(uri);
               await loadData();
               await loadBackups();
-              Alert.alert('Restore berhasil', 'Database berhasil dipulihkan dari backup.');
+              Alert.alert(
+                "Restore berhasil",
+                "Database berhasil dipulihkan dari backup.",
+              );
             } catch (error) {
-              console.error('Error restoring backup:', error);
-              Alert.alert('Restore gagal', 'File backup tidak valid atau tidak dapat dibaca.');
+              console.error("Error restoring backup:", error);
+              Alert.alert(
+                "Restore gagal",
+                "File backup tidak valid atau tidak dapat dibaca.",
+              );
             } finally {
               setIsProcessing(false);
             }
           },
         },
-      ]
+      ],
     );
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
       <ScrollView style={styles.flex} contentContainerStyle={styles.content}>
         <View style={styles.page}>
           <View style={styles.hero}>
@@ -245,18 +277,28 @@ export default function ReportsScreen() {
                 onChangeText={setEndDate}
                 placeholder="2026-06-30"
               />
-              <Text style={styles.periodHint}>Periode aktif: {periodLabel}</Text>
+              <Text style={styles.periodHint}>
+                Periode aktif: {periodLabel}
+              </Text>
               <View style={styles.buttonRow}>
                 <Pressable
                   onPress={loadData}
-                  style={[styles.primaryButton, isProcessing && styles.buttonDisabled]}
-                  disabled={isProcessing}>
+                  style={[
+                    styles.primaryButton,
+                    isProcessing && styles.buttonDisabled,
+                  ]}
+                  disabled={isProcessing}
+                >
                   <Text style={styles.primaryButtonText}>Terapkan Filter</Text>
                 </Pressable>
                 <Pressable
                   onPress={handleExportExcel}
-                  style={[styles.secondaryButton, isProcessing && styles.buttonDisabled]}
-                  disabled={isProcessing}>
+                  style={[
+                    styles.secondaryButton,
+                    isProcessing && styles.buttonDisabled,
+                  ]}
+                  disabled={isProcessing}
+                >
                   <Text style={styles.secondaryButtonText}>Export Excel</Text>
                 </Pressable>
               </View>
@@ -280,18 +322,59 @@ export default function ReportsScreen() {
 
           <View style={styles.sectionSpacer} />
 
+          <SectionCard title="Detail Transaksi">
+            {transactions.length === 0 ? (
+              <EmptyState
+                title="Belum ada transaksi"
+                subtitle="Coba ganti periode atau tambahkan transaksi baru."
+              />
+            ) : (
+              <View style={styles.listGap}>
+                {transactions.map((item) => (
+                  <View key={item.id} style={styles.listItem}>
+                    <View>
+                      <Text style={styles.itemTitle}>{item.category}</Text>
+                      <Text style={styles.itemMeta}>{item.date}</Text>
+                    </View>
+                    <Text
+                      style={[
+                        styles.amount,
+                        item.type === "income"
+                          ? styles.amountPositive
+                          : styles.amountNegative,
+                      ]}
+                    >
+                      {item.type === "income" ? "+" : "-"}
+                      {formatRupiah(item.amount)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </SectionCard>
+
+          <View style={styles.sectionSpacer} />
+
           <SectionCard title="Backup & Restore Database">
             <View style={styles.buttonRow}>
               <Pressable
                 onPress={handleCreateBackup}
-                style={[styles.primaryButton, isProcessing && styles.buttonDisabled]}
-                disabled={isProcessing}>
+                style={[
+                  styles.primaryButton,
+                  isProcessing && styles.buttonDisabled,
+                ]}
+                disabled={isProcessing}
+              >
                 <Text style={styles.primaryButtonText}>Backup Database</Text>
               </Pressable>
               <Pressable
                 onPress={() => handleRestoreBackup()}
-                style={[styles.dangerButton, isProcessing && styles.buttonDisabled]}
-                disabled={isProcessing}>
+                style={[
+                  styles.dangerButton,
+                  isProcessing && styles.buttonDisabled,
+                ]}
+                disabled={isProcessing}
+              >
                 <Text style={styles.dangerButtonText}>Import / Restore</Text>
               </Pressable>
             </View>
@@ -310,7 +393,8 @@ export default function ReportsScreen() {
                   <Pressable
                     key={item.uri}
                     onPress={() => setBackupPath(item.uri)}
-                    style={styles.backupItem}>
+                    style={styles.backupItem}
+                  >
                     <Text style={styles.backupName}>{item.fileName}</Text>
                     <Text style={styles.backupUri} numberOfLines={1}>
                       {item.uri}
@@ -320,38 +404,9 @@ export default function ReportsScreen() {
               </View>
             ) : (
               <Text style={styles.periodHint}>
-                Belum ada backup lokal. Tekan Backup Database untuk membuat file restore.
+                Belum ada backup lokal. Tekan Backup Database untuk membuat file
+                restore.
               </Text>
-            )}
-          </SectionCard>
-
-          <View style={styles.sectionSpacer} />
-
-          <SectionCard title="Detail Transaksi">
-            {transactions.length === 0 ? (
-              <EmptyState
-                title="Belum ada transaksi"
-                subtitle="Coba ganti periode atau tambahkan transaksi baru."
-              />
-            ) : (
-              <View style={styles.listGap}>
-                {transactions.map((item) => (
-                  <View key={item.id} style={styles.listItem}>
-                    <View>
-                      <Text style={styles.itemTitle}>{item.category}</Text>
-                      <Text style={styles.itemMeta}>{item.date}</Text>
-                    </View>
-                    <Text
-                      style={[
-                        styles.amount,
-                        item.type === 'income' ? styles.amountPositive : styles.amountNegative,
-                      ]}>
-                      {item.type === 'income' ? '+' : '-'}
-                      {formatRupiah(item.amount)}
-                    </Text>
-                  </View>
-                ))}
-              </View>
             )}
           </SectionCard>
         </View>
@@ -363,7 +418,7 @@ export default function ReportsScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: '#F5F6FA',
+    backgroundColor: "#F5F6FA",
   },
   flex: {
     flex: 1,
@@ -376,95 +431,95 @@ const styles = StyleSheet.create({
     paddingTop: 12,
   },
   hero: {
-    backgroundColor: '#12212B',
+    backgroundColor: "#12212B",
     borderRadius: 26,
     padding: 20,
     marginBottom: 20,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   orb: {
-    position: 'absolute',
+    position: "absolute",
     borderRadius: 999,
   },
   orbTop: {
     width: 140,
     height: 140,
-    backgroundColor: 'rgba(255, 209, 102, 0.22)',
+    backgroundColor: "rgba(255, 209, 102, 0.22)",
     right: -40,
     top: -40,
   },
   orbBottom: {
     width: 170,
     height: 170,
-    backgroundColor: 'rgba(75, 227, 172, 0.2)',
+    backgroundColor: "rgba(75, 227, 172, 0.2)",
     left: -50,
     bottom: -60,
   },
   heroEyebrow: {
     fontSize: 12,
-    color: 'rgba(255,255,255,0.7)',
-    fontFamily: 'Inter_400Regular',
+    color: "rgba(255,255,255,0.7)",
+    fontFamily: "Inter_400Regular",
   },
   heroTitle: {
     fontSize: 22,
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     marginTop: 6,
-    fontFamily: 'SpaceGrotesk_600SemiBold',
+    fontFamily: "SpaceGrotesk_600SemiBold",
   },
   heroCaption: {
     marginTop: 8,
     fontSize: 12,
-    color: 'rgba(255,255,255,0.7)',
-    fontFamily: 'Inter_400Regular',
+    color: "rgba(255,255,255,0.7)",
+    fontFamily: "Inter_400Regular",
   },
   form: {
     marginTop: 4,
   },
   periodHint: {
     fontSize: 12,
-    color: '#64748B',
-    fontFamily: 'Inter_400Regular',
+    color: "#64748B",
+    fontFamily: "Inter_400Regular",
     marginBottom: 12,
   },
   buttonRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
   },
   primaryButton: {
     flex: 1,
     borderRadius: 18,
-    backgroundColor: '#0C1B24',
+    backgroundColor: "#0C1B24",
     paddingVertical: 12,
-    alignItems: 'center',
+    alignItems: "center",
   },
   primaryButtonText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 14,
-    fontFamily: 'Inter_500Medium',
+    fontFamily: "Inter_500Medium",
   },
   secondaryButton: {
     flex: 1,
     borderRadius: 18,
-    backgroundColor: '#E4E7EC',
+    backgroundColor: "#E4E7EC",
     paddingVertical: 12,
-    alignItems: 'center',
+    alignItems: "center",
   },
   secondaryButtonText: {
-    color: '#0C1B24',
+    color: "#0C1B24",
     fontSize: 14,
-    fontFamily: 'Inter_500Medium',
+    fontFamily: "Inter_500Medium",
   },
   dangerButton: {
     flex: 1,
     borderRadius: 18,
-    backgroundColor: '#E25555',
+    backgroundColor: "#E25555",
     paddingVertical: 12,
-    alignItems: 'center',
+    alignItems: "center",
   },
   dangerButtonText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 14,
-    fontFamily: 'Inter_500Medium',
+    fontFamily: "Inter_500Medium",
   },
   buttonDisabled: {
     opacity: 0.6,
@@ -474,19 +529,19 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   rowBetween: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   meta: {
     fontSize: 12,
-    color: '#64748B',
-    fontFamily: 'Inter_400Regular',
+    color: "#64748B",
+    fontFamily: "Inter_400Regular",
   },
   value: {
     fontSize: 14,
-    color: '#0C1B24',
-    fontFamily: 'Inter_500Medium',
+    color: "#0C1B24",
+    fontFamily: "Inter_500Medium",
   },
   sectionSpacer: {
     height: 16,
@@ -497,51 +552,51 @@ const styles = StyleSheet.create({
   },
   backupItem: {
     borderRadius: 14,
-    backgroundColor: '#F2F4F7',
+    backgroundColor: "#F2F4F7",
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
   backupName: {
     fontSize: 13,
-    color: '#0C1B24',
-    fontFamily: 'Inter_500Medium',
+    color: "#0C1B24",
+    fontFamily: "Inter_500Medium",
   },
   backupUri: {
     marginTop: 4,
     fontSize: 11,
-    color: '#64748B',
-    fontFamily: 'Inter_400Regular',
+    color: "#64748B",
+    fontFamily: "Inter_400Regular",
   },
   listGap: {
     gap: 12,
   },
   listItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     borderRadius: 16,
-    backgroundColor: '#F2F4F7',
+    backgroundColor: "#F2F4F7",
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
   itemTitle: {
     fontSize: 14,
-    color: '#0C1B24',
-    fontFamily: 'Inter_500Medium',
+    color: "#0C1B24",
+    fontFamily: "Inter_500Medium",
   },
   itemMeta: {
     fontSize: 12,
-    color: '#64748B',
-    fontFamily: 'Inter_400Regular',
+    color: "#64748B",
+    fontFamily: "Inter_400Regular",
   },
   amount: {
     fontSize: 14,
-    fontFamily: 'Inter_500Medium',
+    fontFamily: "Inter_500Medium",
   },
   amountPositive: {
-    color: '#1F7A8C',
+    color: "#1F7A8C",
   },
   amountNegative: {
-    color: '#E25555',
+    color: "#E25555",
   },
 });

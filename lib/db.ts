@@ -40,15 +40,13 @@ const isWeb = Platform.OS === "web";
 let dbPromise: any = null;
 let dbInitialized = false;
 
-// Import from legacy to avoid deprecated warnings
 const getDbDirectory = async (): Promise<string> => {
   if (isWeb) {
     return "";
   }
 
   try {
-    // Use legacy import to avoid deprecated warnings
-    const FileSystem = require("expo-file-system");
+    const FileSystem = getFileSystem();
     const base = FileSystem.documentDirectory ?? "";
     const dir = `${base}dompetku/`;
 
@@ -59,7 +57,6 @@ const getDbDirectory = async (): Promise<string> => {
     return dir;
   } catch (error) {
     console.error("Error in getDbDirectory:", error);
-    // Let expo-sqlite handle default directory
     return "";
   }
 };
@@ -75,7 +72,7 @@ const getDB = async () => {
         dbPromise = SQLite.openDatabaseAsync(
           "dompetku.db",
           undefined,
-          directory
+          directory,
         );
       } else {
         dbPromise = SQLite.openDatabaseAsync("dompetku.db");
@@ -128,7 +125,8 @@ const getFileSystem = () => {
   }
 };
 
-const sanitizeFilePart = (value: string) => value.replace(/[^0-9A-Za-z_-]/g, "");
+const sanitizeFilePart = (value: string) =>
+  value.replace(/[^0-9A-Za-z_-]/g, "");
 
 const getTimestamp = () => {
   const now = new Date();
@@ -155,13 +153,19 @@ const ensureDirectory = async (childDirectory: string): Promise<string> => {
 
   const targetInfo = await FileSystem.getInfoAsync(targetDirectory);
   if (!targetInfo.exists) {
-    await FileSystem.makeDirectoryAsync(targetDirectory, { intermediates: true });
+    await FileSystem.makeDirectoryAsync(targetDirectory, {
+      intermediates: true,
+    });
   }
 
   return targetDirectory;
 };
 
-const downloadTextOnWeb = (fileName: string, content: string, mimeType: string) => {
+const downloadTextOnWeb = (
+  fileName: string,
+  content: string,
+  mimeType: string,
+) => {
   const documentRef = (globalThis as any).document;
   const windowRef = (globalThis as any).window;
 
@@ -185,7 +189,11 @@ const escapeExcelCell = (value: string | number | null) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
-const buildExcelHtml = (transactions: Transaction[], start: string, end: string) => {
+const buildExcelHtml = (
+  transactions: Transaction[],
+  start: string,
+  end: string,
+) => {
   const income = transactions
     .filter((item) => item.type === "income")
     .reduce((total, item) => total + item.amount, 0);
@@ -202,7 +210,7 @@ const buildExcelHtml = (transactions: Transaction[], start: string, end: string)
           <td>${escapeExcelCell(item.category)}</td>
           <td>${escapeExcelCell(item.note)}</td>
           <td style="mso-number-format:'\\#\\,\\#\\#0';">${item.amount}</td>
-        </tr>`
+        </tr>`,
     )
     .join("");
 
@@ -254,7 +262,7 @@ export const initDB = async () => {
         category TEXT NOT NULL,
         note TEXT,
         date TEXT NOT NULL
-      );`
+      );`,
     );
     console.log("Transactions table created");
 
@@ -268,7 +276,7 @@ export const initDB = async () => {
         currentPrice REAL,
         buyDate TEXT NOT NULL,
         note TEXT
-      );`
+      );`,
     );
     console.log("Investments table created");
 
@@ -281,7 +289,7 @@ export const initDB = async () => {
 };
 
 export const addTransaction = async (
-  data: Omit<Transaction, "id">
+  data: Omit<Transaction, "id">,
 ): Promise<number> => {
   if (isWeb) {
     const item: Transaction = { id: transactionId++, ...data };
@@ -293,7 +301,7 @@ export const addTransaction = async (
     const result = await run(
       `INSERT INTO transactions (type, amount, category, note, date)
        VALUES (?, ?, ?, ?, ?);`,
-      [data.type, data.amount, data.category, data.note ?? null, data.date]
+      [data.type, data.amount, data.category, data.note ?? null, data.date],
     );
     console.log("Transaction added, ID:", result.lastInsertRowId);
     return result.lastInsertRowId as number;
@@ -308,30 +316,30 @@ export const listTransactions = async (): Promise<Transaction[]> => {
     return [...memoryTransactions];
   }
   return await getAll(
-    `SELECT * FROM transactions ORDER BY date DESC, id DESC;`
+    `SELECT * FROM transactions ORDER BY date DESC, id DESC;`,
   );
 };
 
 export const listTransactionsByRange = async (
   start: string,
-  end: string
+  end: string,
 ): Promise<Transaction[]> => {
   if (isWeb) {
     return memoryTransactions.filter(
-      (item) => item.date >= start && item.date < end
+      (item) => item.date >= start && item.date < end,
     );
   }
   return await getAll(
     `SELECT * FROM transactions
      WHERE date >= ? AND date < ?
      ORDER BY date DESC, id DESC;`,
-    [start, end]
+    [start, end],
   );
 };
 
 export const updateTransaction = async (
   id: number,
-  data: Partial<Omit<Transaction, "id">>
+  data: Partial<Omit<Transaction, "id">>,
 ): Promise<void> => {
   if (isWeb) {
     const index = memoryTransactions.findIndex((t) => t.id === id);
@@ -370,7 +378,7 @@ export const updateTransaction = async (
   values.push(id);
   await run(
     `UPDATE transactions SET ${fields.join(", ")} WHERE id = ?;`,
-    values
+    values,
   );
 };
 
@@ -383,7 +391,7 @@ export const deleteTransaction = async (id: number): Promise<void> => {
 };
 
 export const addInvestment = async (
-  data: Omit<Investment, "id">
+  data: Omit<Investment, "id">,
 ): Promise<number> => {
   if (isWeb) {
     const item: Investment = { id: investmentId++, ...data };
@@ -403,7 +411,7 @@ export const addInvestment = async (
         data.currentPrice ?? null,
         data.buyDate,
         data.note ?? null,
-      ]
+      ],
     );
     console.log("Investment added, ID:", result.lastInsertRowId);
     return result.lastInsertRowId as number;
@@ -418,13 +426,13 @@ export const listInvestments = async (): Promise<Investment[]> => {
     return [...memoryInvestments];
   }
   return await getAll(
-    `SELECT * FROM investments ORDER BY buyDate DESC, id DESC;`
+    `SELECT * FROM investments ORDER BY buyDate DESC, id DESC;`,
   );
 };
 
 export const updateInvestment = async (
   id: number,
-  data: Partial<Omit<Investment, "id">>
+  data: Partial<Omit<Investment, "id">>,
 ): Promise<void> => {
   if (isWeb) {
     const index = memoryInvestments.findIndex((i) => i.id === id);
@@ -471,7 +479,7 @@ export const updateInvestment = async (
   values.push(id);
   await run(
     `UPDATE investments SET ${fields.join(", ")} WHERE id = ?;`,
-    values
+    values,
   );
 };
 
@@ -486,7 +494,7 @@ export const deleteInvestment = async (id: number): Promise<void> => {
 export const exportTransactionsToExcel = async (
   transactions: Transaction[],
   start: string,
-  end: string
+  end: string,
 ): Promise<DatabaseBackupFile> => {
   const safeStart = sanitizeFilePart(start);
   const safeEnd = sanitizeFilePart(end);
@@ -579,11 +587,13 @@ export const restoreDatabaseBackup = async (uri: string): Promise<void> => {
       symbol: item.symbol,
       qty: Number(item.qty),
       buyPrice: Number(item.buyPrice),
-      currentPrice: item.currentPrice == null ? null : Number(item.currentPrice),
+      currentPrice:
+        item.currentPrice == null ? null : Number(item.currentPrice),
       buyDate: item.buyDate,
       note: item.note ?? null,
     }));
-    transactionId = Math.max(0, ...memoryTransactions.map((item) => item.id)) + 1;
+    transactionId =
+      Math.max(0, ...memoryTransactions.map((item) => item.id)) + 1;
     investmentId = Math.max(0, ...memoryInvestments.map((item) => item.id)) + 1;
     return;
   }
@@ -605,7 +615,7 @@ export const restoreDatabaseBackup = async (uri: string): Promise<void> => {
           item.category,
           item.note ?? null,
           item.date,
-        ]
+        ],
       );
     }
 
@@ -622,7 +632,7 @@ export const restoreDatabaseBackup = async (uri: string): Promise<void> => {
           item.currentPrice == null ? null : Number(item.currentPrice),
           item.buyDate,
           item.note ?? null,
-        ]
+        ],
       );
     }
 
