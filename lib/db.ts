@@ -23,6 +23,18 @@ export type Investment = {
   note: string | null;
 };
 
+export type DatabaseBackupFile = {
+  fileName: string;
+  uri: string;
+};
+
+type DatabaseBackupPayload = {
+  version: 1;
+  exportedAt: string;
+  transactions: Transaction[];
+  investments: Investment[];
+};
+
 const isWeb = Platform.OS === "web";
 
 let dbPromise: any = null;
@@ -87,6 +99,16 @@ const run = async (sql: string, params: (string | number | null)[] = []) => {
   }
 };
 
+const exec = async (sql: string) => {
+  try {
+    const db = await getDB();
+    await db.execAsync(sql);
+  } catch (error) {
+    console.error("Error executing SQL:", sql, error);
+    throw error;
+  }
+};
+
 const getAll = async (sql: string, params: (string | number | null)[] = []) => {
   try {
     const db = await getDB();
@@ -96,6 +118,117 @@ const getAll = async (sql: string, params: (string | number | null)[] = []) => {
     console.error("Error getting all:", sql, params, error);
     return [];
   }
+};
+
+const getFileSystem = () => {
+  try {
+    return require("expo-file-system/legacy");
+  } catch {
+    return require("expo-file-system");
+  }
+};
+
+const sanitizeFilePart = (value: string) => value.replace(/[^0-9A-Za-z_-]/g, "");
+
+const getTimestamp = () => {
+  const now = new Date();
+  const date = now.toISOString().slice(0, 10).replace(/-/g, "");
+  const time = now.toTimeString().slice(0, 8).replace(/:/g, "");
+  return `${date}-${time}`;
+};
+
+const ensureDirectory = async (childDirectory: string): Promise<string> => {
+  const FileSystem = getFileSystem();
+  const baseDirectory = FileSystem.documentDirectory;
+
+  if (!baseDirectory) {
+    throw new Error("Direktori dokumen tidak tersedia di perangkat ini.");
+  }
+
+  const rootDirectory = `${baseDirectory}dompetku/`;
+  const targetDirectory = `${rootDirectory}${childDirectory}/`;
+
+  const rootInfo = await FileSystem.getInfoAsync(rootDirectory);
+  if (!rootInfo.exists) {
+    await FileSystem.makeDirectoryAsync(rootDirectory, { intermediates: true });
+  }
+
+  const targetInfo = await FileSystem.getInfoAsync(targetDirectory);
+  if (!targetInfo.exists) {
+    await FileSystem.makeDirectoryAsync(targetDirectory, { intermediates: true });
+  }
+
+  return targetDirectory;
+};
+
+const downloadTextOnWeb = (fileName: string, content: string, mimeType: string) => {
+  const documentRef = (globalThis as any).document;
+  const windowRef = (globalThis as any).window;
+
+  if (!documentRef || !windowRef) {
+    return;
+  }
+
+  const blob = new Blob([content], { type: mimeType });
+  const url = windowRef.URL.createObjectURL(blob);
+  const anchor = documentRef.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.click();
+  windowRef.URL.revokeObjectURL(url);
+};
+
+const escapeExcelCell = (value: string | number | null) =>
+  `${value ?? ""}`
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
+const buildExcelHtml = (transactions: Transaction[], start: string, end: string) => {
+  const income = transactions
+    .filter((item) => item.type === "income")
+    .reduce((total, item) => total + item.amount, 0);
+  const expense = transactions
+    .filter((item) => item.type === "expense")
+    .reduce((total, item) => total + item.amount, 0);
+
+  const rows = transactions
+    .map(
+      (item) => `
+        <tr>
+          <td>${escapeExcelCell(item.date)}</td>
+          <td>${escapeExcelCell(item.type === "income" ? "Pemasukan" : "Pengeluaran")}</td>
+          <td>${escapeExcelCell(item.category)}</td>
+          <td>${escapeExcelCell(item.note)}</td>
+          <td style="mso-number-format:'\\#\\,\\#\\#0';">${item.amount}</td>
+        </tr>`
+    )
+    .join("");
+
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+  </head>
+  <body>
+    <table border="1">
+      <tr><th colspan="5">Laporan Keuangan Dompetku</th></tr>
+      <tr><td>Periode</td><td colspan="4">${escapeExcelCell(start)} sampai ${escapeExcelCell(end)}</td></tr>
+      <tr><td>Total Pemasukan</td><td colspan="4">${income}</td></tr>
+      <tr><td>Total Pengeluaran</td><td colspan="4">${expense}</td></tr>
+      <tr><td>Saldo Bersih</td><td colspan="4">${income - expense}</td></tr>
+      <tr>
+        <th>Tanggal</th>
+        <th>Tipe</th>
+        <th>Kategori</th>
+        <th>Catatan</th>
+        <th>Nominal</th>
+      </tr>
+      ${rows}
+    </table>
+  </body>
+</html>`;
 };
 
 let memoryTransactions: Transaction[] = [];
@@ -348,4 +481,154 @@ export const deleteInvestment = async (id: number): Promise<void> => {
     return;
   }
   await run(`DELETE FROM investments WHERE id = ?;`, [id]);
+};
+
+export const exportTransactionsToExcel = async (
+  transactions: Transaction[],
+  start: string,
+  end: string
+): Promise<DatabaseBackupFile> => {
+  const safeStart = sanitizeFilePart(start);
+  const safeEnd = sanitizeFilePart(end);
+  const fileName = `laporan-transaksi-${safeStart}-${safeEnd}.xls`;
+  const content = buildExcelHtml(transactions, start, end);
+  const mimeType = "application/vnd.ms-excel;charset=utf-8";
+
+  if (isWeb) {
+    downloadTextOnWeb(fileName, content, mimeType);
+    return { fileName, uri: fileName };
+  }
+
+  const FileSystem = getFileSystem();
+  const directory = await ensureDirectory("exports");
+  const uri = `${directory}${fileName}`;
+
+  await FileSystem.writeAsStringAsync(uri, content);
+
+  return { fileName, uri };
+};
+
+export const createDatabaseBackup = async (): Promise<DatabaseBackupFile> => {
+  const payload: DatabaseBackupPayload = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    transactions: await listTransactions(),
+    investments: await listInvestments(),
+  };
+  const fileName = `dompetku-backup-${getTimestamp()}.json`;
+  const content = JSON.stringify(payload, null, 2);
+
+  if (isWeb) {
+    downloadTextOnWeb(fileName, content, "application/json;charset=utf-8");
+    return { fileName, uri: fileName };
+  }
+
+  const FileSystem = getFileSystem();
+  const directory = await ensureDirectory("backups");
+  const uri = `${directory}${fileName}`;
+
+  await FileSystem.writeAsStringAsync(uri, content);
+
+  return { fileName, uri };
+};
+
+export const listDatabaseBackups = async (): Promise<DatabaseBackupFile[]> => {
+  if (isWeb) {
+    return [];
+  }
+
+  const FileSystem = getFileSystem();
+  const directory = await ensureDirectory("backups");
+  const files = await FileSystem.readDirectoryAsync(directory);
+
+  return files
+    .filter((fileName: string) => fileName.endsWith(".json"))
+    .sort()
+    .reverse()
+    .map((fileName: string) => ({
+      fileName,
+      uri: `${directory}${fileName}`,
+    }));
+};
+
+export const restoreDatabaseBackup = async (uri: string): Promise<void> => {
+  const FileSystem = getFileSystem();
+  const content = await FileSystem.readAsStringAsync(uri);
+  const payload = JSON.parse(content) as Partial<DatabaseBackupPayload>;
+
+  if (
+    payload.version !== 1 ||
+    !Array.isArray(payload.transactions) ||
+    !Array.isArray(payload.investments)
+  ) {
+    throw new Error("Format file backup tidak valid.");
+  }
+
+  if (isWeb) {
+    memoryTransactions = payload.transactions.map((item) => ({
+      id: Number(item.id),
+      type: item.type,
+      amount: Number(item.amount),
+      category: item.category,
+      note: item.note ?? null,
+      date: item.date,
+    }));
+    memoryInvestments = payload.investments.map((item) => ({
+      id: Number(item.id),
+      assetType: item.assetType,
+      symbol: item.symbol,
+      qty: Number(item.qty),
+      buyPrice: Number(item.buyPrice),
+      currentPrice: item.currentPrice == null ? null : Number(item.currentPrice),
+      buyDate: item.buyDate,
+      note: item.note ?? null,
+    }));
+    transactionId = Math.max(0, ...memoryTransactions.map((item) => item.id)) + 1;
+    investmentId = Math.max(0, ...memoryInvestments.map((item) => item.id)) + 1;
+    return;
+  }
+
+  await exec("BEGIN TRANSACTION;");
+
+  try {
+    await run(`DELETE FROM transactions;`);
+    await run(`DELETE FROM investments;`);
+
+    for (const item of payload.transactions) {
+      await run(
+        `INSERT INTO transactions (id, type, amount, category, note, date)
+         VALUES (?, ?, ?, ?, ?, ?);`,
+        [
+          Number(item.id),
+          item.type,
+          Number(item.amount),
+          item.category,
+          item.note ?? null,
+          item.date,
+        ]
+      );
+    }
+
+    for (const item of payload.investments) {
+      await run(
+        `INSERT INTO investments (id, assetType, symbol, qty, buyPrice, currentPrice, buyDate, note)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
+        [
+          Number(item.id),
+          item.assetType,
+          item.symbol,
+          Number(item.qty),
+          Number(item.buyPrice),
+          item.currentPrice == null ? null : Number(item.currentPrice),
+          item.buyDate,
+          item.note ?? null,
+        ]
+      );
+    }
+
+    await exec("COMMIT;");
+  } catch (error) {
+    await exec("ROLLBACK;");
+    throw error;
+  }
 };

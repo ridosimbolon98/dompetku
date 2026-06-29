@@ -2,7 +2,7 @@
   "name": "dompetku",
   "main": "expo-router/entry",
   "type": "commonjs",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",

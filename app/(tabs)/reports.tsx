@@ -1,53 +1,128 @@
 import { useCallback, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EmptyState } from '@/components/EmptyState';
+import { Field } from '@/components/Field';
 import { SectionCard } from '@/components/SectionCard';
-import { SegmentedControl } from '@/components/SegmentedControl';
-import { listTransactionsByRange } from '@/lib/db';
 import {
-  endOfRange,
+  createDatabaseBackup,
+  DatabaseBackupFile,
+  exportTransactionsToExcel,
+  listDatabaseBackups,
+  listTransactionsByRange,
+  restoreDatabaseBackup,
+} from '@/lib/db';
+import {
   formatRupiah,
-  startOfDay,
-  startOfMonth,
-  startOfWeek,
   toISODate,
 } from '@/lib/format';
 
-type Period = 'day' | 'week' | 'month';
+const getDefaultDateRange = () => {
+  const now = new Date();
+  return {
+    start: toISODate(new Date(now.getFullYear(), now.getMonth(), 1)),
+    end: toISODate(new Date(now.getFullYear(), now.getMonth() + 1, 0)),
+  };
+};
+
+const parseISODate = (value: string) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+
+  if (!match) {
+    return null;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
+};
+
+const formatDisplayDate = (value: string) => {
+  const date = parseISODate(value);
+
+  if (!date) {
+    return value;
+  }
+
+  const day = `${date.getDate()}`.padStart(2, '0');
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  return `${day}/${month}/${date.getFullYear()}`;
+};
 
 export default function ReportsScreen() {
-  const [period, setPeriod] = useState<Period>('week');
+  const defaultRange = useMemo(() => getDefaultDateRange(), []);
+  const [startDate, setStartDate] = useState(defaultRange.start);
+  const [endDate, setEndDate] = useState(defaultRange.end);
   const [transactions, setTransactions] = useState<
     Awaited<ReturnType<typeof listTransactionsByRange>>
   >([]);
+  const [backupFiles, setBackupFiles] = useState<DatabaseBackupFile[]>([]);
+  const [backupPath, setBackupPath] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const range = useMemo(() => {
-    const now = new Date();
-    if (period === 'day') {
-      const start = startOfDay(now);
-      return { start, end: endOfRange(start, 1) };
+  const getValidatedRange = useCallback(() => {
+    const start = parseISODate(startDate);
+    const end = parseISODate(endDate);
+
+    if (!start || !end) {
+      Alert.alert('Format tanggal salah', 'Gunakan format tanggal YYYY-MM-DD.');
+      return null;
     }
-    if (period === 'week') {
-      const start = startOfWeek(now);
-      return { start, end: endOfRange(start, 7) };
+
+    if (start > end) {
+      Alert.alert('Periode tidak valid', 'Tanggal mulai tidak boleh melewati tanggal akhir.');
+      return null;
     }
-    const start = startOfMonth(now);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    return { start, end };
-  }, [period]);
+
+    const exclusiveEnd = new Date(end);
+    exclusiveEnd.setDate(exclusiveEnd.getDate() + 1);
+
+    return {
+      start: toISODate(start),
+      end: toISODate(end),
+      exclusiveEnd: toISODate(exclusiveEnd),
+    };
+  }, [endDate, startDate]);
 
   const loadData = useCallback(async () => {
-    const rows = await listTransactionsByRange(toISODate(range.start), toISODate(range.end));
+    const range = getValidatedRange();
+
+    if (!range) {
+      return;
+    }
+
+    const rows = await listTransactionsByRange(range.start, range.exclusiveEnd);
     setTransactions(rows);
-  }, [range.end, range.start]);
+  }, [getValidatedRange]);
+
+  const loadBackups = useCallback(async () => {
+    try {
+      const rows = await listDatabaseBackups();
+      setBackupFiles(rows);
+      setBackupPath((current) => current || rows[0]?.uri || '');
+    } catch (error) {
+      console.error('Error loading backups:', error);
+    }
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [loadData])
+      loadBackups();
+    }, [loadBackups, loadData])
   );
 
   const totals = useMemo(() => {
@@ -65,6 +140,82 @@ export default function ReportsScreen() {
   }, [transactions]);
 
   const net = totals.income - totals.expense;
+  const periodLabel = `${formatDisplayDate(startDate)} - ${formatDisplayDate(endDate)}`;
+
+  const handleExportExcel = async () => {
+    const range = getValidatedRange();
+
+    if (!range) {
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      const rows = await listTransactionsByRange(range.start, range.exclusiveEnd);
+      setTransactions(rows);
+
+      if (rows.length === 0) {
+        Alert.alert('Tidak ada data', 'Tidak ada transaksi pada periode ini untuk diexport.');
+        return;
+      }
+
+      const file = await exportTransactionsToExcel(rows, range.start, range.end);
+      Alert.alert('Export berhasil', `File Excel tersimpan:\n${file.uri}`);
+    } catch (error) {
+      console.error('Error exporting report:', error);
+      Alert.alert('Export gagal', 'Gagal membuat file Excel. Silakan coba lagi.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleCreateBackup = async () => {
+    try {
+      setIsProcessing(true);
+      const file = await createDatabaseBackup();
+      await loadBackups();
+      setBackupPath(file.uri);
+      Alert.alert('Backup berhasil', `File backup tersimpan:\n${file.uri}`);
+    } catch (error) {
+      console.error('Error creating backup:', error);
+      Alert.alert('Backup gagal', 'Gagal membuat backup database. Silakan coba lagi.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleRestoreBackup = (uri = backupPath.trim()) => {
+    if (!uri) {
+      Alert.alert('Pilih file backup', 'Isi path file backup atau pilih backup yang tersedia.');
+      return;
+    }
+
+    Alert.alert(
+      'Restore Database',
+      'Data saat ini akan diganti dengan isi file backup. Lanjutkan?',
+      [
+        { text: 'Batal', style: 'cancel' },
+        {
+          text: 'Restore',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setIsProcessing(true);
+              await restoreDatabaseBackup(uri);
+              await loadData();
+              await loadBackups();
+              Alert.alert('Restore berhasil', 'Database berhasil dipulihkan dari backup.');
+            } catch (error) {
+              console.error('Error restoring backup:', error);
+              Alert.alert('Restore gagal', 'File backup tidak valid atau tidak dapat dibaca.');
+            } finally {
+              setIsProcessing(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -76,20 +227,40 @@ export default function ReportsScreen() {
             <Text style={styles.heroEyebrow}>Analisis Periode</Text>
             <Text style={styles.heroTitle}>Laporan Keuangan</Text>
             <Text style={styles.heroCaption}>
-              Lihat performa harian, mingguan, dan bulanan.
+              Lihat transaksi berdasarkan periode tanggal yang dipilih.
             </Text>
           </View>
 
           <SectionCard title="Periode">
-            <SegmentedControl
-              options={[
-                { label: 'Harian', value: 'day' },
-                { label: 'Mingguan', value: 'week' },
-                { label: 'Bulanan', value: 'month' },
-              ]}
-              value={period}
-              onChange={(value) => setPeriod(value as Period)}
-            />
+            <View style={styles.form}>
+              <Field
+                label="Tanggal Mulai (YYYY-MM-DD)"
+                value={startDate}
+                onChangeText={setStartDate}
+                placeholder="2026-06-01"
+              />
+              <Field
+                label="Tanggal Akhir (YYYY-MM-DD)"
+                value={endDate}
+                onChangeText={setEndDate}
+                placeholder="2026-06-30"
+              />
+              <Text style={styles.periodHint}>Periode aktif: {periodLabel}</Text>
+              <View style={styles.buttonRow}>
+                <Pressable
+                  onPress={loadData}
+                  style={[styles.primaryButton, isProcessing && styles.buttonDisabled]}
+                  disabled={isProcessing}>
+                  <Text style={styles.primaryButtonText}>Terapkan Filter</Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleExportExcel}
+                  style={[styles.secondaryButton, isProcessing && styles.buttonDisabled]}
+                  disabled={isProcessing}>
+                  <Text style={styles.secondaryButtonText}>Export Excel</Text>
+                </Pressable>
+              </View>
+            </View>
 
             <View style={styles.summary}>
               <View style={styles.rowBetween}>
@@ -105,6 +276,53 @@ export default function ReportsScreen() {
                 <Text style={styles.value}>{formatRupiah(net)}</Text>
               </View>
             </View>
+          </SectionCard>
+
+          <View style={styles.sectionSpacer} />
+
+          <SectionCard title="Backup & Restore Database">
+            <View style={styles.buttonRow}>
+              <Pressable
+                onPress={handleCreateBackup}
+                style={[styles.primaryButton, isProcessing && styles.buttonDisabled]}
+                disabled={isProcessing}>
+                <Text style={styles.primaryButtonText}>Backup Database</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => handleRestoreBackup()}
+                style={[styles.dangerButton, isProcessing && styles.buttonDisabled]}
+                disabled={isProcessing}>
+                <Text style={styles.dangerButtonText}>Import / Restore</Text>
+              </Pressable>
+            </View>
+            <View style={styles.form}>
+              <Field
+                label="Path File Backup (.json)"
+                value={backupPath}
+                onChangeText={setBackupPath}
+                placeholder="file:///.../dompetku-backup.json"
+              />
+            </View>
+            {backupFiles.length > 0 ? (
+              <View style={styles.backupList}>
+                <Text style={styles.meta}>Backup tersedia</Text>
+                {backupFiles.slice(0, 3).map((item) => (
+                  <Pressable
+                    key={item.uri}
+                    onPress={() => setBackupPath(item.uri)}
+                    style={styles.backupItem}>
+                    <Text style={styles.backupName}>{item.fileName}</Text>
+                    <Text style={styles.backupUri} numberOfLines={1}>
+                      {item.uri}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.periodHint}>
+                Belum ada backup lokal. Tekan Backup Database untuk membuat file restore.
+              </Text>
+            )}
           </SectionCard>
 
           <View style={styles.sectionSpacer} />
@@ -199,6 +417,58 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.7)',
     fontFamily: 'Inter_400Regular',
   },
+  form: {
+    marginTop: 4,
+  },
+  periodHint: {
+    fontSize: 12,
+    color: '#64748B',
+    fontFamily: 'Inter_400Regular',
+    marginBottom: 12,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  primaryButton: {
+    flex: 1,
+    borderRadius: 18,
+    backgroundColor: '#0C1B24',
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  primaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontFamily: 'Inter_500Medium',
+  },
+  secondaryButton: {
+    flex: 1,
+    borderRadius: 18,
+    backgroundColor: '#E4E7EC',
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  secondaryButtonText: {
+    color: '#0C1B24',
+    fontSize: 14,
+    fontFamily: 'Inter_500Medium',
+  },
+  dangerButton: {
+    flex: 1,
+    borderRadius: 18,
+    backgroundColor: '#E25555',
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  dangerButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontFamily: 'Inter_500Medium',
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
   summary: {
     marginTop: 16,
     gap: 10,
@@ -220,6 +490,27 @@ const styles = StyleSheet.create({
   },
   sectionSpacer: {
     height: 16,
+  },
+  backupList: {
+    gap: 10,
+    marginTop: 4,
+  },
+  backupItem: {
+    borderRadius: 14,
+    backgroundColor: '#F2F4F7',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  backupName: {
+    fontSize: 13,
+    color: '#0C1B24',
+    fontFamily: 'Inter_500Medium',
+  },
+  backupUri: {
+    marginTop: 4,
+    fontSize: 11,
+    color: '#64748B',
+    fontFamily: 'Inter_400Regular',
   },
   listGap: {
     gap: 12,
