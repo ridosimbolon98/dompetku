@@ -1,50 +1,68 @@
-# Welcome to your Expo app 👋
+# Dompetku - Pencatatan Keuangan & Investasi
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Aplikasi Android untuk pencatatan pemasukan, pengeluaran, laporan keuangan, serta pencatatan investasi saham/crypto. UI menggunakan Tailwind CSS (NativeWind) dan data tersimpan lokal dengan SQLite.
 
-## Get started
+## Fitur Utama
 
-1. Install dependencies
+- Kelola pemasukan dan pengeluaran
+- Laporan keuangan per hari, minggu, dan bulan
+- Dashboard keuangan
+- Pencatatan investasi saham/crypto
+- Dashboard investasi
+
+## Prasyarat
+
+- Node.js LTS (disarankan 18 atau 20)
+- VS Code
+- Android Studio (untuk emulator) atau HP Android untuk testing
+- Aplikasi Expo Go di HP (untuk testing cepat)
+
+## Instalasi & Menjalankan di VS Code
+
+1. Buka folder proyek di VS Code.
+2. Instal dependencies.
 
    ```bash
    npm install
    ```
 
-2. Start the app
+3. Jalankan aplikasi.
 
    ```bash
    npx expo start
    ```
 
-In the output, you'll find options to open the app in a
+4. Jalankan di perangkat:
+   - Emulator: tekan `a` di terminal Expo.
+   - HP Android: buka Expo Go lalu scan QR code dari terminal.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## Instal Aplikasi ke HP (APK)
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+Metode cepat untuk pemasangan permanen adalah membuat APK menggunakan EAS Build.
 
-## Get a fresh project
+1. Login ke Expo (sekali saja).
 
-When you're ready, run:
+   ```bash
+   npx eas-cli login
+   ```
 
-```bash
-npm run reset-project
-```
+2. Build APK untuk Android.
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+   ```bash
+   npx eas-cli build -p android --profile preview
+   ```
 
-## Learn more
+3. Setelah build selesai, unduh APK dari link yang diberikan terminal EAS.
+4. Pindahkan APK ke HP dan install (izinkan instalasi dari sumber tidak dikenal bila diminta).
 
-To learn more about developing your project with Expo, look at the following resources:
+## Struktur Halaman
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+- `app/(tabs)/index.tsx` - Dashboard keuangan
+- `app/(tabs)/transactions.tsx` - Kelola pemasukan/pengeluaran
+- `app/(tabs)/reports.tsx` - Laporan harian/mingguan/bulanan
+- `app/(tabs)/investments.tsx` - Dashboard & catatan investasi
 
-## Join the community
+## Catatan Pengembangan
 
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- Database lokal: SQLite
+- Styling: NativeWind (Tailwind CSS untuk React Native)
